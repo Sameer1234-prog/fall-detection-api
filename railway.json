@@ -1,0 +1,9 @@
+{
+  "build": {
+    "builder": "NIXPACKS"
+  },
+  "deploy": {
+    "startCommand": "python flask_api.py",
+    "restartPolicyType": "ON_FAILURE"
+  }
+}
