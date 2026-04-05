@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
 Flask API for Fall Detection — Cloud Version (Railway.app)
-Uses PORT environment variable for cloud deployment
 """
 
 from flask import Flask, request, jsonify
@@ -13,11 +12,15 @@ from scipy.signal import butter, filtfilt
 app = Flask(__name__)
 
 # ── Load model ────────────────────────────────────────────────────────────────
-with open('simple_detector.pkl', 'rb') as f:
-    detector = pickle.load(f)
-
-best_name = max(detector.models, key=lambda x: detector.models[x]['accuracy'])
-print(f"Model: {best_name}  accuracy: {detector.models[best_name]['accuracy']:.4f}")
+print("Loading model...")
+try:
+    with open('simple_detector.pkl', 'rb') as f:
+        detector = pickle.load(f)
+    best_name = max(detector.models, key=lambda x: detector.models[x]['accuracy'])
+    print(f"Model loaded OK: {best_name}  accuracy: {detector.models[best_name]['accuracy']:.4f}")
+except Exception as e:
+    print(f"FATAL: Could not load model: {e}")
+    raise
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 SAMPLING_RATE  = 50
