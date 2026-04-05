@@ -25,7 +25,7 @@ except Exception as e:
 # ── Constants ─────────────────────────────────────────────────────────────────
 SAMPLING_RATE  = 50
 WINDOW_SIZE    = 125
-STEP_SIZE      = 50
+STEP_SIZE      = 25   # predict every 25 new samples = every 1 batch from ESP32
 ACC_SCALE      = 16.0 / 32768.0 * 9.81
 GYRO_SCALE     = 2000.0 / 32768.0 * (3.14159265 / 180.0)
 FALL_THRESHOLD = 0.60
