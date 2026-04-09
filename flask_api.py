@@ -63,7 +63,8 @@ FALL_THRESHOLD = 0.60
 
 # ── State ─────────────────────────────────────────────────────────────────────
 buffer         = deque(maxlen=WINDOW_SIZE)
-sample_count   = 0new_since_pred = 0
+sample_count   = 0
+new_since_pred = 0
 pred_running   = False
 lock           = threading.Lock()
 log_lock       = threading.Lock()
