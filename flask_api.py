@@ -22,18 +22,48 @@ except Exception as e:
     print(f"FATAL: Could not load model: {e}")
     raise
 
+# ── Twilio SMS config — set these in Railway environment variables ────────────
+TWILIO_SID      = os.environ.get('TWILIO_SID',   '')
+TWILIO_TOKEN    = os.environ.get('TWILIO_TOKEN',  '')
+TWILIO_FROM     = os.environ.get('TWILIO_FROM',   '')
+EMERGENCY_TO    = os.environ.get('EMERGENCY_TO',  '')
+
+
+def send_twilio_sms(to_number, message):
+    """Send SMS via Twilio REST API — no library needed, uses urllib."""
+    if not to_number or not TWILIO_SID or not TWILIO_TOKEN:
+        print("Twilio not configured — skipping SMS")
+        return False
+    try:
+        import urllib.request, urllib.parse, base64
+        url  = f"https://api.twilio.com/2010-04-01/Accounts/{TWILIO_SID}/Messages.json"
+        data = urllib.parse.urlencode({
+            'From': TWILIO_FROM,
+            'To'  : to_number,
+            'Body': message
+        }).encode()
+        creds = base64.b64encode(f"{TWILIO_SID}:{TWILIO_TOKEN}".encode()).decode()
+        req   = urllib.request.Request(url, data=data, method='POST')
+        req.add_header('Authorization', f'Basic {creds}')
+        req.add_header('Content-Type', 'application/x-www-form-urlencoded')
+        resp  = urllib.request.urlopen(req, timeout=10)
+        print(f"SMS sent to {to_number}: {resp.status}")
+        return True
+    except Exception as e:
+        print(f"SMS error: {e}")
+        return False
+
 # ── Constants ─────────────────────────────────────────────────────────────────
 SAMPLING_RATE  = 50
 WINDOW_SIZE    = 125
-STEP_SIZE      = 25   # predict every 25 new samples = every 1 batch from ESP32
+STEP_SIZE      = 25
 ACC_SCALE      = 16.0 / 32768.0 * 9.81
 GYRO_SCALE     = 2000.0 / 32768.0 * (3.14159265 / 180.0)
 FALL_THRESHOLD = 0.60
 
 # ── State ─────────────────────────────────────────────────────────────────────
 buffer         = deque(maxlen=WINDOW_SIZE)
-sample_count   = 0
-new_since_pred = 0
+sample_count   = 0new_since_pred = 0
 pred_running   = False
 lock           = threading.Lock()
 log_lock       = threading.Lock()
@@ -98,6 +128,20 @@ def run_prediction():
             if log_it:
                 fall_history.append({"time": now.isoformat(), "probability": round(prob, 4)})
                 if len(fall_history) > 50: fall_history.pop(0)
+
+                # ── Send Twilio SMS automatically ─────────────────────────────
+                to_num = EMERGENCY_TO.strip()
+                if to_num:
+                    ts  = now.strftime('%Y-%m-%d %H:%M:%S')
+                    msg = (f"FALL DETECTED!\n"
+                           f"Time: {ts}\n"
+                           f"Probability: {prob*100:.0f}%\n"
+                           f"Check on the person immediately.")
+                    threading.Thread(
+                        target=send_twilio_sms,
+                        args=(to_num, msg),
+                        daemon=True
+                    ).start()
 
         print(f"{'FALL' if prediction else 'safe'}  prob={prob:.3f}")
     except Exception as e:
@@ -178,6 +222,32 @@ def reset():
             "timestamp": datetime.now().isoformat()
         })
     return jsonify({"status": "reset done"}), 200
+
+
+@app.route('/settings', methods=['GET', 'POST'])
+def settings():
+    """Get or update emergency contact number."""
+    global EMERGENCY_TO
+    if request.method == 'POST':
+        data = request.get_json(force=True)
+        EMERGENCY_TO = data.get('emergency_to', EMERGENCY_TO).strip()
+        print(f"Emergency contact updated: {EMERGENCY_TO}")
+        return jsonify({"status": "saved", "emergency_to": EMERGENCY_TO}), 200
+    return jsonify({
+        "emergency_to" : EMERGENCY_TO,
+        "twilio_from"  : TWILIO_FROM,
+        "twilio_ready" : bool(TWILIO_SID and TWILIO_TOKEN and TWILIO_FROM)
+    }), 200
+
+
+@app.route('/test_sms', methods=['POST'])
+def test_sms():
+    """Send a test SMS to verify Twilio is working."""
+    to_num = EMERGENCY_TO.strip()
+    if not to_num:
+        return jsonify({"error": "No emergency number set"}), 400
+    ok = send_twilio_sms(to_num, "Fall Guard test message — Twilio SMS is working!")
+    return jsonify({"sent": ok, "to": to_num}), 200
 
 
 if __name__ == '__main__':
